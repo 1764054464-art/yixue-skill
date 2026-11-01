@@ -1,0 +1,10 @@
+# 本地运行产物
+__pycache__/
+*.pyc
+
+# 认证/临时文件，绝不入库
+token.json
+device.json
+
+.DS_Store
+Thumbs.db
