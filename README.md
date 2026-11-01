@@ -66,5 +66,4 @@ C:\Users\PC\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe
 
 - v1.0 · 由《易学研究》知识库（18 篇专题 + 导读，约 156,361 汉字）打包，含 verify.py（113 断言）。
 - v1.2 · 按独立审计结果修订：03a 宫干式补 mod 12（子丑两宫）、verify.py 扩为 12 组并覆盖 07/03a/03b、02b 子时派别表与曾国藩时差修正、几处方向/术语/断语勘误（详见 references/README-知识库导读.md「v1.2 勘误」）。
-- v1.3 · 对照 GitHub 开源实现 ziwei-doushu（内核 iztro）后的口径补强：07 增列 NOAA 均时差式（与 9.87 式差 ≤1.5 分）并把 iztro 列为可交叉源；02a 增晚子时四档命名对照（next-day / current-day / day-cur-time-next / all-current）；03a 增闰月四口径表与天魁钺「文墨默认派」注；verify.py 升至 13 组（新增 g13 口径声明）。
 - 资料来源：模型综合通行教材、经典术数文本的通行说法与现代学术批评文献编写；非原典影印，非官方教材。
