@@ -6,7 +6,7 @@ yixue 可复算层校验脚本（纯标准库）。
   1. 不"自己验自己"：脚本不读实现、也不用被检表格当输入来反算它自己；
      每个公式先独立实现，再与 references/ 中的表、案例、锚点逐项比对。
   2. 覆盖 07（公式规格）、03a（紫微安星案例）、03b（四化读法）、
-     02a/02b（八字命例）、04a/04b（卦序/纳甲/八宫/世应）、05a（三元龙）。
+     02a/02b（八字命例）、04a/04b（卦序/纳甲/八宫/世应）、05a（三元龙）、14（黄历历注算法与锚点）。
   3. 组末打印 PASS/FAIL；任一 FAIL 则退出码 1。
 
 用法：python scripts/verify.py
@@ -708,7 +708,7 @@ def g07_gua64():
 
 # ---------------------------------------------------------------- 组 8
 def g08_sanyuan_xuankong():
-    group("三元龙 24 + 玄空（子午必同阴阳 / 八运旺山旺向）")
+    group("三元龙 24 + 玄空（子午必同阴阳 / 取象层 / 八运双星会向）")
     hdr, rows = find_table("05a_风水堪舆_峦头形势与罗盘.md", "| 序 | 山 | 周天起止 | 中心 | 所属卦 | 三元龙 | 玄空阴阳")
     check("05a 二十四山表存在", len(rows) == 24, "rows=%d" % len(rows))
     ok = True
@@ -739,18 +739,20 @@ def g08_sanyuan_xuankong():
     t5a = read("05a_风水堪舆_峦头形势与罗盘.md")
     check("05a 术语已改（四墓库藏干）", "四墓库藏干（乙辛丁癸）" in t5a)
 
-    # 八运 子山午向：运盘 8 入中顺飞；山星/向星 8 到坎/离
+    # 八运 子山午向：运盘 8 入中顺飞；取象层：4 属巽取巽阳 → 顺；3 属震取卯阴 → 逆
     yun = feixing(8, True)
     # yun 顺序沿 中乾兑艮离坎坤震巽
     idx = {g: k for k, g in enumerate(["中", "乾", "兑", "艮", "离", "坎", "坤", "震", "巽"])}
     shan_center = yun[idx["坎"]]
     xiang_center = yun[idx["离"]]
-    shan = feixing(shan_center, False)  # 子：阴 → 逆
-    xiang = feixing(xiang_center, False)  # 午：阴 → 逆
-    check("八运子山午向：山星 8 到坎", shan[idx["坎"]] == 8, str(shan))
-    check("八运子山午向：向星 8 到离", xiang[idx["离"]] == 8, str(xiang))
+    shan = feixing(shan_center, True)   # 子：入中 4 属巽，取巽（阳）→ 顺
+    xiang = feixing(xiang_center, False)  # 午：入中 3 属震，取卯（阴）→ 逆
+    check("八运子山午向：山星 8 到离、9 到坎", shan[idx["离"]] == 8 and shan[idx["坎"]] == 9, str(shan))
+    check("八运子山午向：向星 8 到离、7 到坎", xiang[idx["离"]] == 8 and xiang[idx["坎"]] == 7, str(xiang))
     t7 = read("07_算法实现与排盘规格.md")
-    check("07 旺山旺向判据文本", "山星 8 到坐山坎宫" in t7 and "向星 8 到向首离宫" in t7)
+    t5b = read("05b_风水堪舆_八宅玄空三合与阳宅.md")
+    check("07 双星会向判据文本", "双星会向" in t7 and "山、向旺星俱到向首" in t7)
+    check("05b 取象层示例文本", "取与子同为天元龙的**巽**" in t5b and "同三元龙 ≠ 同顺逆" in t5b)
 
     # 07 三元龙表（天元/人元/地元 八山分组）
     hdr, rows = find_table("07_算法实现与排盘规格.md", "| 元龙 | 八山 |")
@@ -856,8 +858,12 @@ def g12_text_consistency():
     check("03b 天相注 | 备一说", "仅备一说" in t3b)
     with io.open(os.path.join(BASE, "..", "SKILL.md"), encoding="utf-8") as f:
         tsk = f.read()
-    check("SKILL 已声明 13 组", "13 组" in tsk)
+    check("SKILL 已声明 14 组", "14 组" in tsk and "13 组" not in tsk)
     check("SKILL 不再写 113 断言", "113 项断言" not in tsk)
+    check("SKILL 已声明 19 篇", "19 篇" in tsk)
+    trd = read("README-知识库导读.md")
+    check("README 导读已声明 19 份专题文档", "19 份专题文档" in trd)
+    check("README 导读已收 14 篇", "14_黄历通书" in trd)
 
 
 def g13_koujing():
@@ -886,10 +892,281 @@ def g13_koujing():
     check("NOAA 式与 9.87 式 1998 年最大差 < 2 分钟", max(diffs) < 2.0, "max=%.2f" % max(diffs))
 
 
+# ---------------------------------------------------------------- 组 14
+D14 = "14_黄历通书_历注体系与算法.md"
+
+JIANCHU = ["建", "除", "满", "平", "定", "执", "破", "危", "成", "收", "开", "闭"]
+ZHISHEN12 = ["青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈"]
+HUANG_DAO = {0, 1, 4, 5, 7, 10}
+XIU28 = "角亢氐房心尾箕斗牛女虚危室壁奎娄胃昴毕觜参井鬼柳星张翼轸"
+JIU_NUM = ["一白", "二黑", "三碧", "四绿", "五黄", "六白", "七赤", "八白", "九紫"]
+LIUYAO6 = ["大安", "赤口", "先胜", "友引", "先负", "佛灭"]
+
+ZHI_FANG = {"子": "正北", "丑": "东北", "寅": "东北", "卯": "正东", "辰": "东南", "巳": "东南",
+            "午": "正南", "未": "西南", "申": "西南", "酉": "正西", "戌": "西北", "亥": "西北"}
+YANG_GUI = {"甲": "未", "乙": "申", "丙": "酉", "丁": "亥", "戊": "丑",
+            "己": "子", "庚": "丑", "辛": "寅", "壬": "卯", "癸": "巳"}
+YIN_GUI = {"甲": "丑", "乙": "子", "丙": "亥", "丁": "酉", "戊": "未",
+           "己": "申", "庚": "未", "辛": "午", "壬": "巳", "癸": "卯"}
+XI_SHEN = {"甲": "东北", "己": "东北", "乙": "西北", "庚": "西北", "丙": "西南",
+           "辛": "西南", "丁": "正南", "壬": "正南", "戊": "东南", "癸": "东南"}
+CAI_SHEN = {"甲": "东北", "乙": "东北", "丙": "西南", "丁": "西南", "戊": "正北",
+            "己": "正北", "庚": "正东", "辛": "正东", "壬": "正南", "癸": "正南"}
+XUN_KONG = ["戌亥", "申酉", "午未", "辰巳", "寅卯", "子丑"]
+LU_ZHI = {"甲": "寅", "乙": "卯", "丙": "巳", "丁": "午", "戊": "巳",
+          "己": "午", "庚": "申", "辛": "酉", "壬": "亥", "癸": "子"}
+
+GAN_POS = {"甲": "门", "己": "门", "乙": "碓磨", "庚": "碓磨", "丙": "厨灶",
+           "辛": "厨灶", "丁": "仓库", "壬": "仓库", "戊": "房床", "癸": "房床"}
+ZHI_POS = {"子": "碓", "午": "碓", "丑": "厕", "未": "厕", "寅": "炉", "申": "炉",
+           "卯": "门", "酉": "门", "辰": "栖", "戌": "栖", "巳": "床", "亥": "床"}
+# 胎神逐日占游方定局：按六十甲子序（甲子=0）连段
+TAISHEN_RUNS = [(0, 1, "外东南"), (2, 6, "外正南"), (7, 12, "外西南"), (13, 17, "外正西"),
+                (18, 23, "外西北"), (24, 28, "外正北"), (29, 33, "房内北"), (34, 35, "房内中"),
+                (36, 38, "房内南"), (39, 39, "房内西"), (40, 43, "房内东"), (44, 44, "房内中"),
+                (45, 50, "外东北"), (51, 55, "外正东"), (56, 59, "外东南")]
+
+PENGZU = {
+    "甲": "甲不开仓财物耗散", "乙": "乙不栽植千株不长", "丙": "丙不修灶必见灾殃",
+    "丁": "丁不剃头头必生疮", "戊": "戊不受田田主不祥", "己": "己不破券二比并亡",
+    "庚": "庚不经络织机虚张", "辛": "辛不合酱主人不尝", "壬": "壬不汲水更难提防",
+    "癸": "癸不词讼理弱敌强", "子": "子不问卜自惹祸殃", "丑": "丑不冠带主不还乡",
+    "寅": "寅不祭祀神鬼不尝", "卯": "卯不穿井水泉不香", "辰": "辰不哭泣必主重丧",
+    "巳": "巳不远行财物伏藏", "午": "午不苫盖屋主更张", "未": "未不服药毒气入肠",
+    "申": "申不安床鬼祟入房", "酉": "酉不会客醉坐颠狂", "戌": "戌不吃犬作怪上床",
+    "亥": "亥不嫁娶不利新郎",
+}
+
+
+def jz_index(y, m, d):
+    return (jdn(y, m, d) + 49) % 60
+
+
+def d_jianchu(month_zhi, day_zhi):
+    return (day_zhi - month_zhi) % 12
+
+
+def d_zhishen(month_zhi, day_zhi):
+    """日家十二值神：青龙起支 c=(2*月支+8)%12（协纪卷九 月神随月建行阴阳六辰）"""
+    return (day_zhi - (2 * month_zhi + 8) % 12) % 12
+
+
+def h_zhishen(day_zhi, hour_zhi):
+    """时家十二值神：青龙起时支 c=(2*(日支%6)+8)%12（协纪卷九 时神从日支起者）"""
+    return (hour_zhi - (2 * (day_zhi % 6) + 8) % 12) % 12
+
+
+def d_xiu(jd):
+    return (jd + 11) % 28
+
+
+def d_sha(zhi):
+    if zhi in (8, 0, 4):
+        return "南"
+    if zhi in (11, 3, 7):
+        return "西"
+    if zhi in (2, 6, 10):
+        return "北"
+    return "东"
+
+
+def d_taishen_dir(idx60):
+    for lo, hi, pos in TAISHEN_RUNS:
+        if lo <= idx60 <= hi:
+            return pos
+    return "?"
+
+
+def _first_jiazi(d0):
+    from datetime import timedelta
+    for k in range(60):
+        dd = d0 + timedelta(days=k)
+        if jz_index(dd.year, dd.month, dd.day) == 0:
+            return dd
+    raise RuntimeError("no jiazi")
+
+
+JIU_ANCHORS = [(date(2023, 12, 22), 1, 1), (date(2024, 2, 19), 7, 1), (date(2024, 4, 19), 4, 1),
+               (date(2024, 6, 21), 9, -1), (date(2024, 8, 22), 3, -1), (date(2024, 10, 23), 6, -1),
+               (date(2024, 12, 21), 1, 1)]
+
+
+def d_jiuxing(y, m, d):
+    """日家白星：冬至/雨水/谷雨 起 1/7/4 顺行；夏至/处暑/霜降 起 9/3/6 逆行。"""
+    tgt = date(y, m, d)
+    ad, start, step = None, 0, 0
+    for a, s, st in JIU_ANCHORS:
+        if a <= tgt and (ad is None or a > ad):
+            ad, start, step = a, s, st
+    base = _first_jiazi(ad)
+    delta = (tgt - base).days
+    return ((start - 1 + step * delta) % 9) + 1
+
+
+def g14_huangli():
+    group("g14 黄历历注：建除/值神/二十八宿/九星/六曜/胎神/彭祖/冲煞/神位/空亡")
+    t14 = read(D14)
+
+    # ---- 3.13 总表：脚本独立计算，逐格比对文档
+    _, rows = find_table(D14, "| 字段 | 2024-01-01")
+    tbl = {}
+    for r in rows:
+        c = cells(r)
+        if len(c) >= 6:
+            tbl[c[0]] = c[1:6]
+    check("14 篇 3.13 总表可解析（>=12 行 × 5 列）",
+          len(tbl) >= 12 and len(tbl.get("建除", [])) == 5, str(sorted(tbl))[:120])
+
+    # (年, 月, 日, 节气月支序, 农历月, 农历日, 农历文本)
+    cases = [
+        (2024, 1, 1, 0, 11, 20, "十一月二十"),
+        (2024, 2, 10, 2, 1, 1, "正月初一"),
+        (2024, 2, 11, 2, 1, 2, "正月初二"),
+        (2024, 3, 10, 3, 2, 1, "二月初一"),
+        (2024, 7, 1, 6, 5, 26, "五月廿六"),
+    ]
+    for k, (y, mo, dd, mz, lm, ld, lunar_txt) in enumerate(cases):
+        jd = jdn(y, mo, dd)
+        idx = (jd + 49) % 60
+        g, z = GAN[idx % 10], ZHI[idx % 12]
+        gz = g + z
+        tag = "%04d-%02d-%02d" % (y, mo, dd)
+        check("%s 日柱 %s" % (tag, gz), tbl["日柱"][k] == gz, tbl["日柱"][k])
+        check("%s 节气月 %s" % (tag, ZHI[mz]), tbl["节气月"][k].startswith(ZHI[mz]), tbl["节气月"][k])
+        check("%s 农历 %s" % (tag, lunar_txt), tbl["农历"][k] == lunar_txt, tbl["农历"][k])
+        jc = JIANCHU[d_jianchu(mz, idx % 12)]
+        check("%s 建除 %s" % (tag, jc), tbl["建除"][k] == jc, tbl["建除"][k])
+        vs = d_zhishen(mz, idx % 12)
+        cell = tbl["值神"][k]
+        check("%s 值神 %s" % (tag, ZHISHEN12[vs]),
+              cell.startswith(ZHISHEN12[vs]) and (("（黄）" in cell) == (vs in HUANG_DAO)), cell)
+        xi = d_xiu(jd)
+        check("%s 值日宿 %s" % (tag, XIU28[xi]), tbl["值日宿"][k] == XIU28[xi], tbl["值日宿"][k])
+        n9 = d_jiuxing(y, mo, dd)
+        check("%s 日九星 %s" % (tag, JIU_NUM[n9 - 1]), tbl["日九星"][k] == JIU_NUM[n9 - 1], tbl["日九星"][k])
+        ly = LIUYAO6[(lm + ld) % 6]
+        check("%s 六曜 %s" % (tag, ly), tbl["六曜"][k] == ly, tbl["六曜"][k])
+        check("%s 胎神方位 %s" % (tag, d_taishen_dir(idx)), tbl["胎神方位"][k] == d_taishen_dir(idx),
+              tbl["胎神方位"][k])
+        exp_chong = JIAZI[(idx + 54) % 60] + "·煞" + d_sha(idx % 12)
+        check("%s 冲煞 %s" % (tag, exp_chong), tbl["冲"][k] == exp_chong, tbl["冲"][k])
+        check("%s 喜神 %s" % (tag, XI_SHEN[g]), tbl["喜神"][k] == XI_SHEN[g], tbl["喜神"][k])
+        check("%s 财神 %s" % (tag, CAI_SHEN[g]), tbl["财神"][k] == CAI_SHEN[g], tbl["财神"][k])
+        exp_gui = ZHI_FANG[YANG_GUI[g]] + "/" + ZHI_FANG[YIN_GUI[g]]
+        check("%s 阳贵/阴贵 %s" % (tag, exp_gui), tbl["阳贵/阴贵"][k] == exp_gui, tbl["阳贵/阴贵"][k])
+        check("%s 日空亡 %s" % (tag, XUN_KONG[idx // 10]), tbl["日空亡"][k] == XUN_KONG[idx // 10],
+              tbl["日空亡"][k])
+
+    # ---- 3.3 值神五例表（月支/起支/值神序）
+    _, rows = find_table(D14, "| 日期 | 日柱 | 节气月 |")
+    for r in rows:
+        c = cells(r)
+        y, mo, dd = [int(x) for x in c[0].split("-")]
+        mz = ZHI.index(c[2][0])
+        idx = jz_index(y, mo, dd)
+        # 青龙起支 c 与值神序 v 双检
+        c_val = (2 * mz + 8) % 12
+        v_val = (idx % 12 - c_val) % 12
+        check("3.3 值神表 %s 起支" % c[0], c[3].startswith(str(c_val)), c[3])
+        check("3.3 值神表 %s 值神" % c[0], c[5].startswith(ZHISHEN12[v_val]), c[5])
+
+    # ---- 3.4 时家黄黑道：三例 × 12 时辰
+    hour_seq = {
+        (2024, 2, 10): "凶凶吉凶吉吉凶凶吉吉凶吉",
+        (2024, 2, 11): "凶吉凶凶吉凶吉吉凶凶吉吉",
+        (2024, 7, 1): "吉吉凶凶吉吉凶吉凶凶吉凶",
+    }
+    for (y, mo, dd), want in hour_seq.items():
+        dz = jz_index(y, mo, dd) % 12
+        got = "".join("吉" if h_zhishen(dz, hz) in HUANG_DAO else "凶" for hz in range(12))
+        check("时家黄黑道 %04d-%02d-%02d" % (y, mo, dd), got == want, got + " vs " + want)
+    check("3.4 篇内载三例时辰序列", "子凶 丑凶 寅吉" in t14 and "子凶 丑吉 寅凶" in t14
+          and "子吉 丑吉 寅凶" in t14)
+
+    # ---- 3.8 胎神：局表 15 段拼合 = 60 日公式；部位合成
+    _, rows = find_table(D14, "| 甲子序 | 起讫 |")
+    seq = []
+    for r in rows:
+        c = cells(r)
+        rng = c[0].replace("–", "-").split("-")
+        try:
+            lo, hi = int(rng[0]), int(rng[-1])
+        except ValueError:
+            continue
+        seq += [c[2]] * (hi - lo + 1)
+    check("胎神逐日占方定局 60 日全表", len(seq) == 60 and all(seq[i] == d_taishen_dir(i) for i in range(60)),
+          "len=%d" % len(seq))
+    for jz_txt, parts in (("甲子", "门" + "碓"), ("乙巳", "碓磨" + "床"),
+                          ("癸酉", "房床" + "门"), ("丙寅", "厨灶" + "炉")):
+        check("胎神部位 %s = %s" % (jz_txt, parts),
+              parts == GAN_POS[jz_txt[0]] + ZHI_POS[jz_txt[1]] and parts in t14, parts)
+    check("胎神甲子日作『占门碓』", "占门碓" in t14)
+
+    # ---- 3.9 彭祖百忌 22 条
+    miss = [k for k, v in PENGZU.items() if v not in t14]
+    check("彭祖百忌 22 条齐备", len(PENGZU) == 22 and not miss, str(miss))
+    miss = [k for k, v in PENGZU.items() if v not in read("01_基础_阴阳五行干支历法与易学宇宙观.md")
+            and v not in t14]
+    check("彭祖百忌 无漏字", not miss, str(miss))
+
+    # ---- 3.10 冲煞 / 三煞
+    check("日冲 甲辰→戊戌", JIAZI[(jz_index(2024, 2, 10) + 54) % 60] == "戊戌")
+    check("日冲 乙巳→己亥", JIAZI[(jz_index(2024, 2, 11) + 54) % 60] == "己亥")
+    check("日煞 申子辰煞南 / 亥卯未煞西", d_sha(0) == "南" and d_sha(3) == "西")
+    check("日煞 寅午戌煞北 / 巳酉丑煞东", d_sha(6) == "北" and d_sha(9) == "东")
+    check("3.10 三煞 年南月北日南", "年南 月北 日南" in t14)
+
+    # ---- 3.11 神位表（干→方位 与篇内表一致）
+    for gl, fang in (("甲己", "东北"), ("乙庚", "西北"), ("丙辛", "西南"),
+                     ("丁壬", "正南"), ("戊癸", "东南")):
+        check("喜神 %s → %s" % (gl, fang), all(XI_SHEN[g] == fang for g in gl))
+    for gl, fang in (("甲乙", "东北"), ("丙丁", "西南"), ("戊己", "正北"),
+                     ("庚辛", "正东"), ("壬癸", "正南")):
+        check("财神 %s → %s" % (gl, fang), all(CAI_SHEN[g] == fang for g in gl))
+    for g in GAN:
+        check("阳贵/阴贵 %s 互不相同" % g, YANG_GUI[g] != YIN_GUI[g])
+    check("3.11 阳贵阴贵 表内一致",
+          cells(find_table(D14, "| 日干 | 甲 | 乙 |")[1][0])[1:11] == [YANG_GUI[g] for g in GAN])
+    check("3.11 阴贵 表内一致",
+          cells(find_table(D14, "| 日干 | 甲 | 乙 |")[1][1])[1:11] == [YIN_GUI[g] for g in GAN])
+
+    # ---- 3.12 空亡 / 日禄
+    for i, x in enumerate(XUN_KONG):
+        check("旬空 第 %d 旬 = %s" % (i + 1, x), (i * 10) // 10 == i and x in t14)
+    check("日空亡 甲辰日属甲辰旬→寅卯", XUN_KONG[jz_index(2024, 2, 10) // 10] == "寅卯")
+    check("日空亡 癸酉日属甲子旬→戌亥", XUN_KONG[jz_index(2024, 3, 10) // 10] == "戌亥")
+    check("3.12 日禄表一致",
+          cells(find_table(D14, "| 干 | 甲 | 乙 |")[1][0])[1:11] == [LU_ZHI[g] for g in GAN])
+
+    # ---- 3.6 九星三元起例表
+    _, rows = find_table(D14, "| 半年 | 元 | 起算节气 |")
+    starts = [cells(r)[3] for r in rows]
+    dirs = [cells(r)[4] for r in rows]
+    check("九星三元起星 1/7/4/9/3/6", starts == ["一白", "七赤", "四绿", "九紫", "三碧", "六白"], str(starts))
+    check("九星三元 阳顺阴逆", dirs[0].startswith("+1") and dirs[3].startswith("−1"), str(dirs))
+
+    # ---- 3.5 二十八宿 / 3.2 建除 / 3.7 六曜 / 3.6 星名
+    check("二十八宿 28 名齐备", all(ch in t14 for ch in XIU28))
+    check("建除十二神名齐备", all(n in t14 for n in JIANCHU))
+    check("建除别名齐备", all(x in t14 for x in ("兵福", "吉期", "天巫", "天罡", "时阴",
+                                               "小耗", "大耗", "天喜", "河魁", "时阳", "血支")))
+    check("值神十二名齐备", all(n in t14 for n in ZHISHEN12))
+    check("黄道六神", "青龙、明堂、金匮、天德、玉堂、司命" in t14)
+    check("六曜六名齐备", all(n in t14 for n in LIUYAO6))
+    check("九星三名体系并存", all(x in t14 for x in ("太乙", "贪狼", "天枢")))
+    check("二十八宿两种口径辨析", "值日宿" in t14 and "本命星宿" in t14)
+
+    # ---- 文献与篇内引文
+    for kw in ("二十四气六宫周", "阳顺一四七中游", "九六三星逆行求", "夏至后甲子为上元起九紫",
+               "子午青龙起在申", "月神随月建行阴阳六辰", "协纪辨方书", "卷九", "五要奇书"):
+        check("14 篇引文 | %s" % kw, kw in t14)
+
+
 def main():
     for fn in (g01_day_pillar, g02_four_pillars, g03_canggan_nayin_shishen, g04_ziwei,
                g05_sihua, g06_najia_bagong, g07_gua64, g08_sanyuan_xuankong,
-               g09_dayun, g10_piyu, g11_placeholders, g12_text_consistency, g13_koujing):
+               g09_dayun, g10_piyu, g11_placeholders, g12_text_consistency, g13_koujing,
+               g14_huangli):
         try:
             fn()
         except Exception as e:
@@ -920,4 +1197,7 @@ if __name__ == "__main__":
 #   [03a] 四化 甲·廉贞→天相；紫微全表 木三局初一 辰→巳
 #   [04b] 纳甲 乾·甲子→庚子；[04a] 卦序 3 屯→蒙；[05a] 子山 阴→阳
 # 重放方法：Verification/mutation_test.py（复制 yixue_work 后逐例改错再跑本脚本）。
+#
+# v1.4 补记（2026-11）：新增 [14] 组后注入 3 处（建除 (日支−月支)→(日支+月支)、
+#   二十八宿 +11→+10、胎神局第 40–43 段改「房内西」），3/3 报红、退出码 1。
 # ---------------------------------------------------------------------------
